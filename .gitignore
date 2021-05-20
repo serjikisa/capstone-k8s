@@ -140,3 +140,4 @@ cython_debug/
 # Project custom files
 ansible_hosts
 setcreds.sh
+.vagrant
