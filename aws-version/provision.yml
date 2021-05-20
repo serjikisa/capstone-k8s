@@ -1,0 +1,143 @@
+---
+- hosts: localhost
+  tasks:
+  - name: create a new ec2 key pair, returns generated private key
+    amazon.aws.ec2_key:
+      name: my_keypair
+    register: ec2_key_result
+
+  - name: Save private key on local
+    copy: content="{{ ec2_key_result.key.private_key }}" dest="~/.aws/my_keypair.pem" mode=0600
+    when: ec2_key_result.changed
+
+  - name: Create EC2 group
+    amazon.aws.ec2_group:
+      name: "ec2group01"
+      description: allow all
+      rules:
+        - proto: tcp
+          ports:
+          - 80
+          cidr_ip: 0.0.0.0/0
+          rule_desc: allow all on port 80
+        - proto: tcp
+          from_port: 22
+          to_port: 22
+          cidr_ip: 10.0.0.0/0
+          rule_desc: allow all on port 22
+    register: ec2group01
+
+  - name: Create ELB
+    amazon.aws.ec2_elb_lb:
+      name: my-load-balancer
+      state: present
+      zones:
+        - us-east-1a
+        - us-east-1b
+      listeners:
+        - protocol: http
+          load_balancer_port: 80
+          instance_port: 80
+    register: elb01
+
+  - name: provision master
+    amazon.aws.ec2:
+      keypair: my_keypair
+      group_id:
+      - "{{ ec2group01.group_id }}"
+      - "{{ elb01.elb.security_group_ids | first }}"
+      instance_type: t2.micro
+      image: ami-0747bdcabd34c712a # ami-09e67e426f25ce0d7
+      wait: yes
+      count: 1
+    register: k8s_master
+
+  - name: associate new elastic IPs with master
+    community.aws.ec2_eip:
+      device_id: "{{ item }}"
+      in_vpc: true
+    loop: "{{ k8s_master.instance_ids }}"
+    register: master_ips
+
+  - name: output the k8s_master
+    ansible.builtin.debug:
+      msg: "{{ k8s_master }}"
+
+  - name: output master_ips
+    ansible.builtin.debug:
+      msg: "{{ master_ips }}"
+
+  # - name: Store master instance IPs to in memory inventory to provision against
+  #   add_host:
+  #     hostname: "{{ item.public_ip }}"
+  #     groups: 
+  #     - k8s
+  #     - k8s_master
+  #   loop: "{{ master_ips.results }}"
+
+  - name: Create a fresh inventory
+    shell: echo '[k8s_master]' > ./ansible_hosts
+
+  - name: Add master to local host group
+    shell: echo "{{ item.public_ip }} ansible_user=ubuntu ansible_ssh_private_key_file=~/.aws/my_keypair.pem" >> ./ansible_hosts
+    with_items: "{{ master_ips.results }}"
+
+  - name: Wait for servers to come online
+    wait_for:
+      host: "{{ item.public_ip }}"
+      port: 22
+      timeout: 180
+    with_items: "{{ master_ips.results }}"
+
+  - name: Add master as known hosts
+    shell: ssh-keyscan -H "{{ item.public_ip }}"  >> ~/.ssh/known_hosts
+    with_items: "{{ master_ips.results }}"
+
+  # After Elastic IP associating the name is changing
+  # - name: Add master to local host group
+  #   shell: echo "{{ item.public_dns_name }} ansible_ssh_private_key_file=~/.aws/my_keypair.pem" >> ./ansible_hosts
+  #   with_items: "{{ k8s_master.instances }}"
+
+  - name: provision nodes
+    amazon.aws.ec2:
+      group: ec2group01
+      keypair: my_keypair
+      # id: 'k8s_nodes'
+      instance_type: t2.micro
+      image: ami-0747bdcabd34c712a
+      wait: yes
+      count: 2
+    register: k8s_nodes
+
+  - name: associate new elastic IPs with nodes
+    community.aws.ec2_eip:
+      device_id: "{{ item }}"
+      in_vpc: true
+    loop: "{{ k8s_nodes.instance_ids }}"
+    register: node_ips
+
+  # - name: Store node instance IPs to provision against
+  #   add_host:
+  #     hostname: "{{ item.public_ip }}"
+  #     groups: 
+  #     - k8s
+  #     - k8s_nodes
+  #   loop: "{{ node_ips.results }}"
+
+  - name: Add nodes section to inventory
+    shell: echo '\n[k8s_nodes]' >> ./ansible_hosts
+
+  - name: Add nodes to local host group
+    shell: echo "{{ item.public_ip }} ansible_user=ubuntu ansible_ssh_private_key_file=~/.aws/my_keypair.pem" >> ./ansible_hosts
+    with_items: "{{ node_ips.results }}"
+
+  - name: Wait for servers to come online
+    wait_for:
+      host: "{{ item.public_ip }}"
+      port: 22
+      timeout: 180
+    with_items: "{{ node_ips.results }}"
+
+  - name: Add nodes as known hosts
+    shell: ssh-keyscan -H "{{ item.public_ip }}"  >> ~/.ssh/known_hosts
+    with_items: "{{ node_ips.results }}"

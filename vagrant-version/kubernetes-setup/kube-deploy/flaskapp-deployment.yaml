@@ -1,0 +1,76 @@
+apiVersion: apps/v1 #  for k8s versions before 1.9.0 use apps/v1beta2  and before 1.8.0 use extensions/v1beta1
+kind: Deployment
+metadata:
+  name: flaskapp
+  labels:
+    app: fk-frontend
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: fk-frontend
+  strategy:
+    type: Recreate
+  template:
+    metadata:
+      labels:
+        app: fk-frontend
+    spec:
+      containers:
+      - image: serjik1024/flaskapp:1.0
+        name: flaskapp
+        env:
+        - name: DB_HOST
+          value: flask-mysql
+        - name: DB_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: mysql-pass
+              key: password
+        ports:
+        - containerPort: 5000
+          name: flaskapp
+        resources:
+          limits:
+            cpu: 500m
+          requests:
+            cpu: 200m
+status: {}
+
+---
+
+apiVersion: v1
+kind: Service
+metadata:
+  name: flaskapp
+  labels:
+    app:  fk-frontend
+spec:
+  ports:
+  - port: 5000
+    protocol: TCP
+    targetPort: 5000
+  selector:
+    app: fk-frontend
+  type: NodePort
+status:
+  loadBalancer: {}
+
+---
+
+apiVersion: autoscaling/v1
+kind: HorizontalPodAutoscaler
+metadata:
+  creationTimestamp: null
+  name: flaskapp
+spec:
+  maxReplicas: 3
+  minReplicas: 1
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: flaskapp
+  targetCPUUtilizationPercentage: 50
+status:
+  currentReplicas: 0
+  desiredReplicas: 0

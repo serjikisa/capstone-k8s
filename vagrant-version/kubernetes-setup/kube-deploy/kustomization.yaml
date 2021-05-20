@@ -1,0 +1,7 @@
+secretGenerator:
+- name: mysql-pass
+  literals:
+  - password=centos
+resources:
+  - mysql-deployment.yaml
+  - flaskapp-deployment.yaml

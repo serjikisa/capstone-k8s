@@ -1,0 +1,63 @@
+apiVersion: apps/v1 # for k8s versions before 1.9.0 use apps/v1beta2  and before 1.8.0 use extensions/v1beta1
+kind: Deployment
+metadata:
+  name: flask-mysql
+  labels:
+    app: fk-mysql
+spec:
+  selector:
+    matchLabels:
+      app: fk-mysql
+  strategy:
+    type: Recreate
+  template:
+    metadata:
+      labels:
+        app: fk-mysql
+    spec:
+      containers:
+      - image: mysql:5.6
+        name: mysql
+        env:
+        - name: MYSQL_ROOT_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: mysql-pass
+              key: password
+        livenessProbe:
+          tcpSocket:
+            port: 3306
+        ports:
+        - containerPort: 3306
+          name: mysql
+
+---
+
+apiVersion: v1
+kind: Service
+metadata:
+  name: flask-mysql
+  labels:
+    app: fk-mysql
+spec:
+  ports:
+    - port: 3306
+  selector:
+    app: fk-mysql
+  clusterIP: None
+
+---
+
+kind: NetworkPolicy
+apiVersion: networking.k8s.io/v1
+metadata:
+  name: flask-mysql
+spec:
+  podSelector:
+    matchLabels:
+      app: fk-mysql
+  ingress:
+  - from:
+      - podSelector:
+          matchLabels:
+            app: fk-frontend
