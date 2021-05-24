@@ -1,4 +1,3 @@
-### Project hosted on Github Url: https://github.com/serjikisagholian/capstone-k8s
 ### Pre Install
 - Install aws cli, to communicate with the cloud via command line
 - Install python3.6+ if not installed
@@ -143,7 +142,7 @@ yes
 
 >> kubectl get hpa -w
 NAME       REFERENCE             TARGETS   MINPODS   MAXPODS   REPLICAS   AGE
-flaskapp   Deployment/flaskapp   0%/50%    1         3         1          38m
+flaskapp   Deployment/flaskapp   0%/50%     1         3         1          38m
 flaskapp   Deployment/flaskapp   235%/50%   1         3         1          39m
 flaskapp   Deployment/flaskapp   235%/50%   1         3         3          40m
 ```
